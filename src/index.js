@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 const api = require("./services/api/index.js");
 const yargs = require("yargs");
-const { hideBin } = require("yargs/helpers");
+const {hideBin} = require("yargs/helpers");
 
-const { organizationName, projectNumber, token, label, column } = yargs(
+const {organizationName, projectNumber, token, label, column, isSorted} = yargs(
   hideBin(process.argv)
 )
   .option("organizationName", {
@@ -27,7 +27,12 @@ const { organizationName, projectNumber, token, label, column } = yargs(
   .option("label", {
     alias: "l",
     type: "string",
-    description: "Define label to filter cards",
+    description: "Define label to filter cards.",
+  })
+  .option("isSorted", {
+    alias: "s",
+    type: "boolean",
+    description: "Sort by issue number.",
   })
   .option("column", {
     alias: "c",
@@ -39,34 +44,57 @@ const runtimeHeaders = {
   Authorization: `token ${token}`,
 };
 
-function renderCard({ number, title }) {
+function sortCardsByIssueNumber(cardsInfo) {
+  return cardsInfo.sort((a, b) => {
+    if (a.number > b.number) {
+      return 1;
+    }
+    if (a.number < b.number) {
+      return -1;
+    }
+    return 0;
+  });
+}
+
+function renderCardsInfo(cardsInfo) {
+  let cards = cardsInfo;
+  if (isSorted) {
+    cards = sortCardsByIssueNumber(cards);
+  }
+
+  cards.forEach((card) => {
+    renderCard(card);
+  });
+}
+
+function renderCard({number, title}) {
   console.log(`#${number} ${title}`);
 }
 
 function getCardsInfo(cards) {
-  cards.forEach(async (card, i) => {
-    const { data: cardInfo } = await api.get(card.content_url, {
-      headers: runtimeHeaders,
-    });
+  return Promise.all(
+    cards.map(async (card, i) => {
+      const {data: cardInfo} = await api.get(card.content_url, {
+        headers: runtimeHeaders,
+      });
 
-    if (!label) {
-      renderCard({ number: cardInfo.number, title: cardInfo.title });
-      return;
-    }
+      if (!label) {
+        return {number: cardInfo.number, title: cardInfo.title};
+      }
 
-    const hasLabel = cardInfo.labels.some(
-      (e) => e.name.toLowerCase() === label.toLowerCase()
-    );
+      const hasLabel = cardInfo.labels.some(
+        (e) => e.name.toLowerCase() === label.toLowerCase()
+      );
 
-    if (hasLabel) {
-      renderCard({ number: cardInfo.number, title: cardInfo.title });
-      return;
-    }
-  });
+      if (hasLabel) {
+        return {number: cardInfo.number, title: cardInfo.title};
+      }
+    })
+  );
 }
 
 async function loadReleaseNotes() {
-  const { data: orgProjects } = await api.get(
+  const {data: orgProjects} = await api.get(
     `https://api.github.com/orgs/${organizationName}/projects`,
     {
       headers: runtimeHeaders,
@@ -75,7 +103,7 @@ async function loadReleaseNotes() {
 
   const filteredProject = orgProjects.find((p) => p.number === projectNumber);
 
-  const { data: columns } = await api.get(
+  const {data: columns} = await api.get(
     `https://api.github.com/projects/${filteredProject.id}/columns`,
     {
       headers: runtimeHeaders,
@@ -84,13 +112,15 @@ async function loadReleaseNotes() {
 
   const filteredColumn = columns.find((col) => col.name === column);
 
-  const { cards_url } = column ? filteredColumn : columns[0];
+  const {cards_url} = column ? filteredColumn : columns[0];
 
-  const { data: cards } = await api.get(`${cards_url}?per_page=100`, {
+  const {data: cards} = await api.get(`${cards_url}?per_page=100`, {
     headers: runtimeHeaders,
   });
 
-  getCardsInfo(cards);
+  getCardsInfo(cards).then((cardsInfo) => {
+    renderCardsInfo(cardsInfo);
+  });
 }
 
 loadReleaseNotes();
