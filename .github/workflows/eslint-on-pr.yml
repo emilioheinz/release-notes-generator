@@ -1,0 +1,17 @@
+name: ESLint
+
+on:
+  pull_request:
+    branches: [ master ]
+   
+  workflow_dispatch:
+
+jobs:
+  eslint-check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install modules
+      run: yarn
+    - name: Run ESLint
+      run: yarn eslint ./src --ext .js,.json
