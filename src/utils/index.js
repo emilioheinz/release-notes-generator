@@ -1,3 +1,4 @@
 const filters = require('./filters')
+const file = require('./file')
 
-module.exports = { filters }
+module.exports = { filters, file }
